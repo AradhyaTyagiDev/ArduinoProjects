@@ -1,0 +1,18 @@
+{
+        "configurations": [
+                {
+                        "name": "ESP32",
+                        "includePath": [
+                                "${workspaceFolder}/**",
+                                "/Users/aradhyatyagi/Library/Arduino15/packages/esp32/**",
+                                "/Users/aradhyatyagi/Library/Arduino15/packages/esp32/tools/esp32-arduino-libs/**"
+                        ],
+                        "defines": [],
+                        "compilerPath": "/usr/bin/clang",
+                        "cStandard": "c11",
+                        "cppStandard": "c++17",
+                        "intelliSenseMode": "macos-clang-x64"
+                }
+        ],
+        "version": 4
+}

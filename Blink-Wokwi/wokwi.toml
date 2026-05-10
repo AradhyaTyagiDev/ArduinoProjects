@@ -1,0 +1,5 @@
+[wokwi]
+version = 1
+firmware = "sketch/build/esp32.esp32.esp32/sketch.ino.elf"
+elf = "sketch/build/esp32.esp32.esp32/sketch.ino.elf"
+diagram = "diagram.json"

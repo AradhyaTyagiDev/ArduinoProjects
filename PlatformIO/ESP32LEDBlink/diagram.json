@@ -1,0 +1,62 @@
+{
+        "version": 1,
+        "author": "Anonymous maker",
+        "editor": "wokwi",
+        "parts": [
+                {
+                        "type": "wokwi-esp32-devkit-v1",
+                        "id": "esp",
+                        "top": -19.2,
+                        "left": -52.76,
+                        "attrs": {}
+                },
+                {
+                        "type": "wokwi-led",
+                        "id": "led",
+                        "top": -3.6,
+                        "left": 100.2,
+                        "attrs": { "color": "Red", "flip": "1" }
+                },
+                {
+                        "type": "wokwi-led",
+                        "id": "led2",
+                        "top": 15.6,
+                        "left": 167.4,
+                        "attrs": { "color": "Green", "flip": "1" }
+                },
+                {
+                        "type": "wokwi-led",
+                        "id": "led3",
+                        "top": 54,
+                        "left": 244.2,
+                        "attrs": { "color": "yellow", "flip": "1" }
+                },
+                {
+                        "type": "wokwi-buzzer",
+                        "id": "bz1",
+                        "top": -122.4,
+                        "left": -142.2,
+                        "attrs": { "volume": "0.1" }
+                }
+        ],
+        "connections": [
+                ["esp:TX", "$serialMonitor:RX", "", []],
+                ["esp:RX", "$serialMonitor:TX", "", []],
+                ["led1:A", "esp:D4", "green", ["v0"]],
+                ["led1:C", "esp:GND.1", "black", ["v0"]],
+                ["led2:A", "esp:D5", "red", ["v0"]],
+                ["led2:C", "esp:GND.1", "black", ["v0"]],
+                ["esp:D18", "led:A", "green", ["h0"]],
+                ["led:C", "esp:GND.1", "black", ["v96", "h-0.4"]],
+                ["led3:C", "esp:GND.1", "black", ["v19.2", "h-221.2"]],
+                ["esp:D4", "led3:A", "green", ["h181.86", "v14.4"]],
+                ["esp:D19", "bz1:2", "green", ["h28.26", "v-81.8", "h-258.8"]],
+                [
+                        "bz1:1",
+                        "esp:GND.1",
+                        "black",
+                        ["h-38.4", "v230.4", "h316.8", "v-62.2"]
+                ]
+        ],
+        "dependencies": {}
+}
