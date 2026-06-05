@@ -2,23 +2,21 @@
 
 #include <Arduino.h>
 
-// =========================== Pin Definitions ==========================
-// --- Hardware Pins (ESP32) --- 
-// Motor A
-constexpr int PIN_AIN1 = 17;
-constexpr int PIN_AIN2 = 16;
-constexpr int PIN_PWMA = 4;
+// ======================== Motor Pins ========================
+constexpr uint8_t PIN_AIN1 = 17;
+constexpr uint8_t PIN_AIN2 = 16;
+constexpr uint8_t PIN_PWMA = 4;
 
-// Motor B
-constexpr int PIN_BIN1 = 18;
-constexpr int PIN_BIN2 = 19;
-constexpr int PIN_PWMB = 21;
+constexpr uint8_t PIN_BIN1 = 18;
+constexpr uint8_t PIN_BIN2 = 19;
+constexpr uint8_t PIN_PWMB = 21;
 
-constexpr int PIN_STBY = 5;
+constexpr uint8_t PIN_STBY = 5;
 
-// Ultrasonic sensor (HS04)
-constexpr int PIN_TRIG = 25; // Assign your HC-SR04 Trigger pin
-constexpr int PIN_ECHO = 32; // Assign your HC-SR04 Echo pin
+// ===================== Ultrasonic Pins HC-SR04 ======================
+constexpr uint8_t PIN_TRIG = 25;
+constexpr uint8_t PIN_ECHO = 32;
+
 
 // --- Distance Thresholds (cm) ---
 constexpr float DIST_FULL_SPEED_MIN = 150.0f;
@@ -42,16 +40,3 @@ constexpr uint8_t SPEED_VERY_SLOW = 50; // ~20% for obstacle negotiation
 // Sensor update rate
 constexpr unsigned long SENSOR_INTERVAL_MS = 33;  // ~30 Hz
 
-// --- Robot States ---
-enum class RobotState {
-    Initializing,
-    MovingForward,
-    ObstacleDetected,
-    SearchingPath,
-    VerifyPath,
-    DecidePath,
-    TurningLeftMove,
-    TurningRightMove,
-    Reversing,
-    StuckRecovery
-};

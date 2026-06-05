@@ -1,40 +1,37 @@
-#include "LedRingController.h"
-#include "UltrasonicSensor.h"
 #include <Arduino.h>
+#include "Config.h"
+#include "MotorController.h"
+#include "UltrasonicSensor.h"
+#include "RobotController.h"
 
-//==================================
-// Setup
-//==================================
+// -----------------------------------------------------------
+// 1. Instantiate Hardware Drivers
+// -----------------------------------------------------------
+// No pin parameters needed, they are read directly from Config.h
+MotorController motor;
+UltrasonicSensor sensor(PIN_TRIG, PIN_ECHO); // Sensor still needs pins
+
+// -----------------------------------------------------------
+// 2. Instantiate the Orchestrator
+// -----------------------------------------------------------
+RobotController robot(motor, sensor);
+
+// -----------------------------------------------------------
+// Arduino Setup
+// -----------------------------------------------------------
 void setup() {
-  Serial.begin(115200);
+    Serial.begin(115200);
+    Serial.println(F("Robot Initializing..."));
 
-  pinMode(TRIG_PIN, OUTPUT);
-  pinMode(ECHO_PIN, INPUT);
+    robot.begin();
 
-  ring.begin();
-  ring.clear();
-  ring.show();
-
-  setLedIntensity(currentLEDBrightness);
-
-  Serial.println("LED Threat Animation Test");
+    Serial.println(F("Robot Ready. Autonomous mode active!"));
 }
 
-//====================================================
-// TEST MODE
-//====================================================
+// -----------------------------------------------------------
+// Arduino Loop
+// -----------------------------------------------------------
 void loop() {
-
-  float distance = readFilteredDistance();
-
-  Serial.printf(
-        "Distance: %.1f cm\n",
-        distance
-    );
-
-   updateLedStatus(distance);
-
-  static uint32_t lastPrint = 0;
+    // 100% non-blocking. Runs thousands of times per second.
+    robot.update();
 }
-
-

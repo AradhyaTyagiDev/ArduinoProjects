@@ -1,191 +1,113 @@
 #pragma once
 
-#include "RobotState.h"
-#include "UltrasonicSensor.h"
-#include "DistanceFilter.h"
+#include <Arduino.h>
 #include "MotorController.h"
+#include "UltrasonicSensor.h"
 
-#include "RobotController.h"
-#include "Config.h"
+// =========================================================
+// Distance Zones (cm)
+// =========================================================
+constexpr float FULL_SPEED_CLEAR_HIGHWAY = 150.0f;
 
-class RobotController
-{
-public:
+constexpr float CLEAR_DISTANCE_MAX = 149.0f;
+constexpr float CLEAR_DISTANCE_MIN = 90.0f;
 
-    void begin();
+constexpr float CAUTION_DISTANCE_MAX = 89.0f;
+constexpr float CAUTION_DISTANCE_MIN = 50.0f;
 
-    void update();
+constexpr float SLOW_DISTANCE_MAX = 49.0f;
+constexpr float SLOW_DISTANCE_MIN = 25.0f;
 
-private:
+constexpr float BLOCKED_DISTANCE_MAX = 24.0f;
+constexpr float BLOCKED_DISTANCE_MIN = 18.0f;
 
-    RobotState mState = RobotState::Initializing;
+constexpr float EMERGENCY_DISTANCE = 10.0f;
 
-    MotorController mMotor;
+// =========================================================
+// Motion Profiles (PWM)
+// =========================================================
+constexpr uint8_t PWM_FULL   = 255; // 100%
+constexpr uint8_t PWM_MEDIUM = 204; // 80%
+constexpr uint8_t PWM_SLOW   = 153; // 60%
+constexpr uint8_t PWM_CRAWL  = 102; // 40%
 
-    uint8_t mSearchAttempt = 0;
+// =========================================================
+// Search & Recovery Config
+// =========================================================
+constexpr uint16_t SEARCH_ANGLES[] = {5, 10, 15, 25, 40, 55};
+constexpr uint8_t MAX_SEARCH_ATTEMPTS = 6; // 0 to 5
+constexpr uint16_t MAX_SCAN_ANGLE = 90;    // Cap to prevent >180 overflow
 
-    float mDistance = 100;
+constexpr uint16_t REVERSE_SHORT_MS = 400;
+constexpr uint16_t REVERSE_STUCK_MS  = 800;
 
-    uint32_t mStateStartTime = 0;
+// Time for 30Hz sensor to flush its 5-sample median buffer
+constexpr uint16_t SENSOR_SETTLE_MS = 150; 
 
-    void transition(RobotState newState);
-
-    ScheduledAction mAction;
+// =========================================================
+// State Machines
+// =========================================================
+enum class RobotState {
+    Initializing,
+    MovingForward,
+    ObstacleDetected,
+    Reversing,
+    ScanningLeft,
+    SettlingLeft,
+    MeasuringLeft,
+    ScanningRight,
+    SettlingRight,
+    MeasuringRight,
+    ReturnToCenter,
+    SettlingCenter,
+    CommitLeftMove,
+    CommitRightMove,
+    StuckRecovery
 };
 
-void RobotController::begin()
-{
-    mMotor.begin();
-    transition(RobotState::MovingForward);
-}
+enum class RecoveryStep {
+    Reversing,
+    TurningLeft90,
+    SettlingLeft90,
+    MeasuringLeft90,
+    TurningRight180,
+    SettlingRight180,
+    MeasuringRight180,
+    TurningToBest,
+    Committing
+};
 
-void RobotController::transition(RobotState newState)
-{
-    mState = newState;
-    mStateStartTime = millis();
-}
+class RobotController {
+public:
+    RobotController(MotorController& motor, UltrasonicSensor& sensor);
 
-void RobotController::update()
-{
-    mDistance =
-        mFilter.update(
-            mSensor.readDistanceCM());
+    void begin();
+    void update(); // Main non-blocking loop
 
-    switch(mState)
-    {
-        case RobotState::MovingForward:
-        {
-            if(mDistance > 150)
-            {
-                mMotor.forward(255);
-            }
-            else if(mDistance > 90)
-            {
-                mMotor.forward(200);
-            }
-            else if(mDistance > 50)
-            {
-                mMotor.forward(150);
-            }
-            else if(mDistance > 25)
-            {
-                mMotor.forward(100);
-            }
-            else
-            {
-                transition(
-                    RobotState::ObstacleDetected);
-            }
+private:
+    MotorController& mMotor;
+    UltrasonicSensor& mSensor;
 
-            break;
-        }
+    RobotState mState = RobotState::Initializing;
+    RecoveryStep mRecoveryStep = RecoveryStep::Reversing;
 
-        case RobotState::ObstacleDetected:
-        {
-            mMotor.stop();
+    uint8_t mSearchAttempt = 0;
+    float mLeftScanDistance = 0.0f;
+    float mRightScanDistance = 0.0f;
 
-            transition(
-                RobotState::SearchingPath);
+    // --------------------------------------------------
+    // Immortal Non-Blocking Action Scheduler
+    // --------------------------------------------------
+    uint32_t mActionStartTime = 0;
+    uint32_t mActionDuration = 0;
+    
+    void startAction(uint32_t durationMs);
+    bool isActionBusy() const;
+    bool isSystemBusy() const; // Checks both Motor turns and Scheduled actions
 
-            break;
-        }
-
-        case RobotState::SearchingPath:
-        {
-            static const uint16_t searchTime[] =
-            {
-                80,
-                120,
-                180,
-                250,
-                350,
-                500
-            };
-
-            if(mSearchAttempt >= 6)
-            {
-                transition(
-                    RobotState::StuckRecovery);
-
-                break;
-            }
-
-            mMotor.rotateLeft(120);
-
-            if(millis() - mStateStartTime >
-                searchTime[mSearchAttempt])
-            {
-                mMotor.stop();
-
-                if(mDistance > 40)
-                {
-                    mSearchAttempt = 0;
-
-                    transition(
-                        RobotState::MovingForward);
-                }
-                else
-                {
-                    mSearchAttempt++;
-
-                    transition(
-                        RobotState::SearchingPath);
-                }
-            }
-
-            break;
-        }
-
-        case RobotState::StuckRecovery:
-        {
-            if(millis() - mStateStartTime < 800)
-            {
-                mMotor.reverse(150);
-            }
-            else if(millis() - mStateStartTime < 1800)
-            {
-                mMotor.rotateLeft(180);
-            }
-            else
-            {
-                mSearchAttempt = 0;
-
-                transition(
-                    RobotState::MovingForward);
-            }
-
-            break;
-        }
-
-        default:
-            break;
-    }
-}
-
-
- // -------------------------------------------------- // -------------------------------------------------- // --------------------------------------------------
- ///How to use new New non-blocking Ultrasonic sensor
-void loop() {
-    // 1. Update sensor (Takes <1 microsecond, never blocks)
-    sensor.update();
-
-    // 2. Update motor timers (Takes <1 microsecond, never blocks)
-    motor.update();
-
-    // 3. If the motor is executing a turn/reverse, wait for it to finish
-    if (motor.isBusy()) {
-        return; 
-    }
-
-    // 4. Read the instant, pre-filtered distance (Takes nanoseconds)
-    float distance = sensor.getDistance();
-
-    // 5. State machine logic
-    if (distance <= EMERGENCY_DISTANCE) {
-        motor.rotateRight(45, 153);
-    } else if (distance <= CLEAR_DISTANCE_MIN) {
-        motor.forward(153);
-    } else {
-        motor.forward(255);
-    }
-}
+    // --------------------------------------------------
+    // Helpers
+    // --------------------------------------------------
+    uint16_t getScanAngle();
+    float getSafeDistance(); // NAN Immunity
+};
