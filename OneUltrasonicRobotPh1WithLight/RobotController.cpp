@@ -119,7 +119,7 @@ void RobotController::update() {
 
         case RobotState::MeasuringLeft: {
             mLeftScanDistance = getSafeDistance(); // Read flushed data
-            if (mLeftScanDistance > CAUTION_DISTANCE_MAX) {
+            if (mLeftScanDistance > MIN_PATH_CLEAR_CM) { // Changed from CAUTION_DISTANCE_MAX
                 mState = RobotState::CommitLeftMove;
             } else {
                 uint16_t angle = getScanAngle();
@@ -146,7 +146,7 @@ void RobotController::update() {
 
         case RobotState::MeasuringRight: {
             mRightScanDistance = getSafeDistance(); // Read flushed data
-            if (mRightScanDistance > CAUTION_DISTANCE_MAX) {
+            if (mRightScanDistance > MIN_PATH_CLEAR_CM) { // Changed from CAUTION_DISTANCE_MAX
                 mState = RobotState::CommitRightMove;
             } else {
                 uint16_t currentAngle = getScanAngle();
@@ -254,7 +254,13 @@ void RobotController::update() {
                     break;
 
                 case RecoveryStep::TurningToBest:
-                    if (mLeftScanDistance > mRightScanDistance) {
+                    // Choose whichever side gave us at least 40cm
+                    if (mLeftScanDistance > MIN_PATH_CLEAR_CM && mLeftScanDistance > mRightScanDistance) {
+                        mMotor.rotateLeft(180, PWM_SLOW); 
+                    } else if (mRightScanDistance > MIN_PATH_CLEAR_CM) {
+                        // Right is better, already facing it. Do nothing.
+                    } else {
+                        // Both are blocked even after 180 scans. Just turn left and hope for the best.
                         mMotor.rotateLeft(180, PWM_SLOW);
                     }
                     mRecoveryStep = RecoveryStep::Committing;
