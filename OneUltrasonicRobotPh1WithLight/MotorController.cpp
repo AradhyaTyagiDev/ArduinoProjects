@@ -78,6 +78,19 @@ void MotorController::stop() {
     mBusy = false;
 }
 
+void MotorController::activeBrake() {
+    // Short Brake: Both directions HIGH fights the motor's inertia
+    digitalWrite(PIN_AIN1, HIGH); 
+    digitalWrite(PIN_AIN2, HIGH);
+    digitalWrite(PIN_BIN1, HIGH); 
+    digitalWrite(PIN_BIN2, HIGH);
+
+    ledcWrite(PIN_PWMA, 0); 
+    ledcWrite(PIN_PWMB, 0);
+    
+    mBusy = false;
+}
+
 // Merged the duplicate update functions into one clean version
 void MotorController::update() {
     if (mBusy && millis() >= mActionEndTime) {

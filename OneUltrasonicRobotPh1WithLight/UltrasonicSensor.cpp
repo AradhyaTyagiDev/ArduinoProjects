@@ -59,6 +59,7 @@ void UltrasonicSensor::update() {
                 if (distance < MIN_DISTANCE_CM) distance = MIN_DISTANCE_CM;
                 if (distance > MAX_DISTANCE_CM) distance = MAX_DISTANCE_CM;
 
+                mRawDistanceCm = distance;
                 processRawDistance(distance);
                 
                 mState = PingState::IDLE;
@@ -66,6 +67,7 @@ void UltrasonicSensor::update() {
             } 
             // Timeout check (object is too far or echo lost)
             else if (nowUs - mEchoStartTimeUs > MAX_ECHO_TIME_US) {
+                mRawDistanceCm = MAX_DISTANCE_CM;
                 processRawDistance(MAX_DISTANCE_CM);
                 mState = PingState::IDLE;
                 mLastPingTimeMs = nowMs;

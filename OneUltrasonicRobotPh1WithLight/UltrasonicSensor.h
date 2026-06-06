@@ -15,6 +15,9 @@ public:
     // Returns the latest smoothed distance. Call this anytime.
     float getDistance() const { return mSmoothedDistance; }
 
+    //instant reading so the robot can panic-stop if it sees a sudden wall
+    float getRawDistance() const { return mRawDistanceCm; }
+
 private:
     uint8_t mTrigPin = PIN_TRIG;
     uint8_t mEchoPin = PIN_ECHO;
@@ -40,6 +43,8 @@ private:
 
     // --- Exponential Smoothing ---
     float mSmoothedDistance = 400.0f;
+    float mRawDistanceCm = 400.0f;
+    
     static constexpr float ALPHA = 0.3f; // 30% new data, 70% old data
 
     // --- Timing & Constraints ---

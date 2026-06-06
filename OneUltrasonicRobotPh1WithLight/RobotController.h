@@ -94,6 +94,16 @@ public:
     void update(); // Main non-blocking loop
 
 private:
+
+    // Physics & Dynamic Braking Variables
+    float mPreviousDistance = 400.0f;
+    uint32_t mPreviousTime = 0;
+    uint8_t mCurrentSpeedPWM = 0; 
+    float mClosingRate = 0.0f; // Low-pass filtered approach speed (cm/s)
+
+    // Sensor Dropout Memory
+    float mLastValidDistance = 150.0f; 
+
     MotorController& mMotor;
     UltrasonicSensor& mSensor;
 

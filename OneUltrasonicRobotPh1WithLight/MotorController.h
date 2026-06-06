@@ -12,6 +12,7 @@ public:
     void forward(uint8_t speed);
     void reverse(uint8_t speed);
     void stop();
+    void activeBrake();
     
     void rotateLeft(uint16_t angleDeg, uint8_t speed);
     void rotateRight(uint16_t angleDeg, uint8_t speed);
