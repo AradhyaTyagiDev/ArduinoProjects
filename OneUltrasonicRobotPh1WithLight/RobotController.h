@@ -102,7 +102,7 @@ private:
     float mClosingRate = 0.0f; // Low-pass filtered approach speed (cm/s)
 
     // Sensor Dropout Memory
-    float mLastValidDistance = 150.0f; 
+    float mLastValidDistance = 150.0f;  // Initialize to a large, safe distance
 
     MotorController& mMotor;
     UltrasonicSensor& mSensor;

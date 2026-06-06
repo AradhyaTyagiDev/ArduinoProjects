@@ -71,23 +71,20 @@ void RobotController::update() {
             if (getSafeDistance() > 0) mState = RobotState::MovingForward;
             break;
 
-        case RobotState::MovingForward: {
+                case RobotState::MovingForward: {
             float currentDistance = getSafeDistance();
             uint32_t currentTime = millis();
 
             // ---------------------------------------------------------
-            // 1. Physics Engine: Closing Rate (Low-Pass Filtered)
+            // 1. Physics Engine: Closing Rate (Jitter & Low-Pass Filtered)
             // ---------------------------------------------------------
-            // CRITICAL: Only calculate when the sensor actually reports a NEW value!
+            // Brilliant addition: The fabs() check ignores 0.5cm sensor jitter!
             if (fabs(currentDistance - mPreviousDistance) > 0.5f) {
                 float deltaTimeSec = (currentTime - mPreviousTime) / 1000.0f;
                 
-                // Must be at least 20ms to be a valid sensor update
                 if (deltaTimeSec > 0.020f) { 
                     float rawRate = (mPreviousDistance - currentDistance) / deltaTimeSec;
-                    
-                    // Low-pass filter to smooth out ultrasonic noise
-                    mClosingRate = (mClosingRate * 0.6f) + (rawRate * 0.4f);
+                    mClosingRate = (mClosingRate * 0.6f) + (rawRate * 0.4f); 
                 }
                 
                 mPreviousDistance = currentDistance;
@@ -97,24 +94,17 @@ void RobotController::update() {
             // ---------------------------------------------------------
             // 2. Non-Linear Speed Curve (Quadratic Easing)
             // ---------------------------------------------------------
-            // Normalize distance: 40cm = 0.0 (Crawl), 160cm = 1.0 (Max Speed)
-            float normalized = constrain((currentDistance - 40.0f) / 120.0f, 0.0f, 1.0f);
-            
-            // Square it. The robot stays incredibly slow near 40cm, 
-            // but rapidly accelerates as the path opens up past 100cm.
+            float normalized = constrain((currentDistance - 40.0f) / 100.0f, 0.0f, 1.0f);
             float curve = normalized * normalized;
-            
-            // What the robot WANTS to be doing based on distance
-            uint8_t targetSpeedPWM = 40 + (curve * 120.0f);
+            uint8_t targetSpeedPWM = 50 + (curve * 205.0f);
 
             // ---------------------------------------------------------
-            // 3. Dynamic Braking Zone (Based on ACTUAL speed)
+            // 3. Dynamic Braking Zone (CRITICAL: Check BEFORE ramping!)
             // ---------------------------------------------------------
-            // 🛑 THE MAGIC FIX: Use mCurrentSpeedPWM (Actual physical speed) 
-            // NOT targetSpeedPWM. Momentum depends on what the motors are ACTUALLY doing.
+            // We must calculate stopping distance based on the ACTUAL CURRENT momentum.
+            // If we ramp down first, we artificially shrink the safety net.
             float stoppingDistance = 20.0f + (mCurrentSpeedPWM * 0.35f);
 
-            // Closing Rate Buffer: If approaching fast, extend the safety net!
             if (mClosingRate > 30.0f) {
                 stoppingDistance += (mClosingRate * 0.25f); 
             }
@@ -122,16 +112,12 @@ void RobotController::update() {
             // ---------------------------------------------------------
             // 4. Decision Time: Brake or Drive?
             // ---------------------------------------------------------
-            // PANIC STOP CONDITIONS:
-            // 1. We have entered the dynamic stopping zone.
-            // 2. Absolute emergency fallback (< 15cm).
-            // 3. An object is approaching us faster than 150 cm/s.
             if (currentDistance <= stoppingDistance || currentDistance <= 15.0f || mClosingRate > 150.0f) {
-                mMotor.activeBrake(); // STOP ON A DIME!
+                mMotor.activeBrake(); 
                 
-                mCurrentSpeedPWM = 0; // Reset actual speed to 0
+                mCurrentSpeedPWM = 0; // Reset physical speed instantly on brake
+                mClosingRate = 0.0f;  // Reset closing rate
                 
-                // Escalate search attempt if we got dangerously close
                 if (currentDistance <= 15.0f) {
                     mSearchAttempt = 5; 
                 } else {
@@ -141,8 +127,21 @@ void RobotController::update() {
                 mState = RobotState::ObstacleDetected;
             } 
             else {
-                // CRUISE: Apply the smooth, non-linear speed
-                mCurrentSpeedPWM = targetSpeedPWM; // Update actual physical speed
+                // ---------------------------------------------------------
+                // 5. Acceleration & Deceleration Ramping (Slew Rate Limiting)
+                // ---------------------------------------------------------
+                // Only ramp if we are NOT braking!
+                int16_t speedDiff = targetSpeedPWM - mCurrentSpeedPWM;
+                
+                if (speedDiff > 5) {
+                    mCurrentSpeedPWM += 5; // Smooth acceleration
+                } else if (speedDiff < -15) {
+                    mCurrentSpeedPWM -= 15; // Smooth engine braking
+                } else {
+                    mCurrentSpeedPWM = targetSpeedPWM; 
+                }
+
+                // CRUISE: Apply the smoothly ramped speed
                 mMotor.forward(mCurrentSpeedPWM);
 
                 if (currentDistance > CLEAR_DISTANCE_MAX) {
