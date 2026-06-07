@@ -95,18 +95,6 @@ public:
 
 private:
 
-    // Physics & Dynamic Braking Variables
-    float mPreviousDistance = 400.0f;
-    uint32_t mPreviousTime = 0;
-    uint8_t mCurrentSpeedPWM = 0; 
-    float mClosingRate = 0.0f; // Low-pass filtered approach speed (cm/s)
-
-    // Sensor Dropout Memory
-    float mLastValidDistance = 150.0f;  // Initialize to a large, safe distance
-
-    // Arcing & Commit Timers: Timer to prevent the robot from getting stuck in an infinite arc loop if it's trapped in a U-shaped corner.
-    uint32_t mCommitStartTime = 0;
-
     MotorController& mMotor;
     UltrasonicSensor& mSensor;
 
@@ -117,15 +105,46 @@ private:
     float mLeftScanDistance = 0.0f;
     float mRightScanDistance = 0.0f;
 
+    // Arcing & Commit Timers: Timer to prevent the robot from getting stuck in an infinite arc loop if it's trapped in a U-shaped corner.
+    uint32_t mCommitStartTime = 0;
+
     // --------------------------------------------------
     // Immortal Non-Blocking Action Scheduler
     // --------------------------------------------------
     uint32_t mActionStartTime = 0;
     uint32_t mActionDuration = 0;
-    
+
     void startAction(uint32_t durationMs);
     bool isActionBusy() const;
     bool isSystemBusy() const; // Checks both Motor turns and Scheduled actions
+
+    // Physics & Dynamic Braking Variables
+    float mPreviousDistance = 400.0f;
+    uint32_t mPreviousTime = 0;
+    uint8_t mCurrentSpeedPWM = 0; 
+    float mClosingRate = 0.0f; // Low-pass filtered approach speed (cm/s)
+
+    // Sensor Dropout Memory
+    float mLastValidDistance = 150.0f;  // Initialize to a large, safe distance
+
+    // --------------------------------------------------
+    // Anti-Wall-Hugging & Frustration Memory
+    // --------------------------------------------------
+    // CRITICAL: LEFT must be -1 and RIGHT must be 1 for the peel math to work!
+    enum class TurnDir : int8_t {
+        NONE = 0,
+        LEFT = -1,  // CRITICAL: Must be -1 for the peel math to work!
+        RIGHT = 1   // CRITICAL: Must be 1 for the peel math to work!
+    };
+
+    // Anti-Wall-Hugging & Frustration Engine
+    TurnDir mLastTurnDirection = TurnDir::NONE;
+    TurnDir mScanStartDirection = TurnDir::NONE; 
+
+    float mFrustrationLevel = 0.0f; // Unified stress level (0.0 Calm to 3.0 Panicked)
+    uint32_t mLastFrustrationDecay = 0; // Use this instead of static variable
+
+    uint32_t mLastRampTime = 0; // Tracks time for smooth, controlled acceleration
 
     // --------------------------------------------------
     // Helpers
