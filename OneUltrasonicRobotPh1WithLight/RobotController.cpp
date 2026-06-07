@@ -142,7 +142,16 @@ void RobotController::update() {
                 }
 
                 // CRUISE: Apply the smoothly ramped speed
-                mMotor.forward(mCurrentSpeedPWM);
+                // ---------------------------------------------------------
+                // 6. Wanderlust Drift (Organic Exploration)
+                // ---------------------------------------------------------
+                // Instead of driving perfectly straight, apply a gentle, sine-wave curvature.
+                // This makes the robot look like it's naturally "looking around" while cruising.
+                // Max drift is 15% (0.15f), which is subtle but highly organic.
+                float driftCurvature = sin(millis() / 2500.0f) * 0.30f; 
+                
+                // CRUISE: Apply the smoothly ramped speed WITH the organic drift
+                mMotor.turn(driftCurvature, mCurrentSpeedPWM);
 
                 if (currentDistance > CLEAR_DISTANCE_MAX) {
                     mSearchAttempt = 0;
@@ -186,6 +195,7 @@ void RobotController::update() {
         case RobotState::MeasuringLeft: {
             mLeftScanDistance = getSafeDistance(); // Read flushed data
             if (mLeftScanDistance > MIN_PATH_CLEAR_CM) { // Changed from CAUTION_DISTANCE_MAX
+                mCommitStartTime = millis();
                 mState = RobotState::CommitLeftMove;
             } else {
                 uint16_t angle = getScanAngle();
@@ -213,6 +223,7 @@ void RobotController::update() {
         case RobotState::MeasuringRight: {
             mRightScanDistance = getSafeDistance(); // Read flushed data
             if (mRightScanDistance > MIN_PATH_CLEAR_CM) { // Changed from CAUTION_DISTANCE_MAX
+                mCommitStartTime = millis();
                 mState = RobotState::CommitRightMove;
             } else {
                 uint16_t currentAngle = getScanAngle();
@@ -245,28 +256,42 @@ void RobotController::update() {
             break;
 
         // --- COMMIT MOVE PIPELINE ---
-
         case RobotState::CommitLeftMove: {
-            mMotor.forward(PWM_CRAWL);
+            // ARC LEFT: Curvature -0.5f means the right wheel is 50% faster than the left.
+            // This creates a smooth, car-like arc around the obstacle.
+            mMotor.turn(-0.5f, PWM_CRAWL); 
+            
             float dist = getSafeDistance();
-            if (dist > CLEAR_DISTANCE_MIN) {
+            uint32_t elapsed = millis() - mCommitStartTime;
+            
+            // EXIT CONDITIONS:
+            // 1. The path is wide open again (> 90cm), meaning we successfully cleared the obstacle.
+            // 2. TIMEOUT (1.5 seconds): Prevents infinite arcing if trapped in a U-shaped corner.
+            if (dist > CLEAR_DISTANCE_MIN || elapsed > 1500) {
                 mSearchAttempt = 0;
-                mState = RobotState::MovingForward;
-            } else if (dist <= BLOCKED_DISTANCE_MAX) {
-                mMotor.stop();
+                mState = RobotState::MovingForward; // Resume normal driving (with drift)
+            } 
+            // EMERGENCY FALLBACK: If we get too close while arcing (e.g., side wall)
+            else if (dist <= 25.0f) { 
+                mMotor.activeBrake();
                 mState = RobotState::ObstacleDetected;
             }
             break;
         }
 
         case RobotState::CommitRightMove: {
-            mMotor.forward(PWM_CRAWL);
+            // ARC RIGHT: Curvature +0.5f means the left wheel is 50% faster than the right.
+            mMotor.turn(0.5f, PWM_CRAWL); 
+            
             float dist = getSafeDistance();
-            if (dist > CLEAR_DISTANCE_MIN) {
+            uint32_t elapsed = millis() - mCommitStartTime;
+            
+            if (dist > CLEAR_DISTANCE_MIN || elapsed > 1500) {
                 mSearchAttempt = 0;
                 mState = RobotState::MovingForward;
-            } else if (dist <= BLOCKED_DISTANCE_MAX) {
-                mMotor.stop();
+            } 
+            else if (dist <= 25.0f) { 
+                mMotor.activeBrake();
                 mState = RobotState::ObstacleDetected;
             }
             break;

@@ -104,6 +104,9 @@ private:
     // Sensor Dropout Memory
     float mLastValidDistance = 150.0f;  // Initialize to a large, safe distance
 
+    // Arcing & Commit Timers: Timer to prevent the robot from getting stuck in an infinite arc loop if it's trapped in a U-shaped corner.
+    uint32_t mCommitStartTime = 0;
+
     MotorController& mMotor;
     UltrasonicSensor& mSensor;
 

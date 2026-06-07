@@ -72,6 +72,63 @@ void MotorController::rotateRight(uint16_t angleDeg, uint8_t speed) {
     mBusy = true;
 }
 
+// =========================================================
+// Feature 1.2: Differential Drive Arcing
+// =========================================================
+void MotorController::driveDifferential(int16_t leftPWM, int16_t rightPWM) {
+    // --- Left Motor ---
+    if (leftPWM > 0) {
+        digitalWrite(PIN_AIN1, HIGH); digitalWrite(PIN_AIN2, LOW);
+        // FIX: Cast to (int) so both arguments are the same type
+        ledcWrite(PIN_PWMA, min((int)leftPWM, 255)); 
+    } else if (leftPWM < 0) {
+        digitalWrite(PIN_AIN1, LOW); digitalWrite(PIN_AIN2, HIGH);
+        ledcWrite(PIN_PWMA, min((int)(-leftPWM), 255)); 
+    } else {
+        // Coast (LOW/LOW) for smooth arcing
+        digitalWrite(PIN_AIN1, LOW); digitalWrite(PIN_AIN2, LOW); 
+        ledcWrite(PIN_PWMA, 0);
+    }
+
+    // --- Right Motor ---
+    if (rightPWM > 0) {
+        digitalWrite(PIN_BIN1, HIGH); digitalWrite(PIN_BIN2, LOW);
+        ledcWrite(PIN_PWMB, min((int)rightPWM, 255)); 
+    } else if (rightPWM < 0) {
+        digitalWrite(PIN_BIN1, LOW); digitalWrite(PIN_BIN2, HIGH);
+        ledcWrite(PIN_PWMB, min((int)(-rightPWM), 255)); 
+    } else {
+        digitalWrite(PIN_BIN1, LOW); digitalWrite(PIN_BIN2, LOW);
+        ledcWrite(PIN_PWMB, 0);
+    }
+    
+    mBusy = false; // Differential drive is continuous
+}
+
+void MotorController::turn(float curvature, uint8_t baseSpeed) {
+    // Clamp curvature to safe physical limits [-1.0, 1.0]
+    if (curvature > 1.0f) curvature = 1.0f;
+    if (curvature < -1.0f) curvature = -1.0f;
+
+    int16_t leftPWM, rightPWM;
+
+    if (curvature >= 0.0f) {
+        // Turning Right: Left wheel is base speed, Right wheel slows down
+        leftPWM = baseSpeed;
+        rightPWM = (int16_t)(baseSpeed * (1.0f - curvature));
+    } else {
+        // Turning Left: Right wheel is base speed, Left wheel slows down
+        rightPWM = baseSpeed;
+        leftPWM = (int16_t)(baseSpeed * (1.0f + curvature)); // curvature is negative
+    }
+
+    // Prevent motor stall: If a wheel is told to move but PWM is too low, bump it to 30
+    if (leftPWM > 0 && leftPWM < 30) leftPWM = 30;
+    if (rightPWM > 0 && rightPWM < 30) rightPWM = 30;
+
+    driveDifferential(leftPWM, rightPWM);
+}
+
 void MotorController::stop() {
     ledcWrite(PIN_PWMA, 0); 
     ledcWrite(PIN_PWMB, 0);

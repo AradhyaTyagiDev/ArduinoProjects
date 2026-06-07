@@ -16,6 +16,9 @@ public:
     
     void rotateLeft(uint16_t angleDeg, uint8_t speed);
     void rotateRight(uint16_t angleDeg, uint8_t speed);
+
+    void driveDifferential(int16_t leftPWM, int16_t rightPWM);
+    void turn(float curvature, uint8_t baseSpeed); // -1.0 (Left) to 1.0 (Right)
     
     bool isBusy() const { return mBusy; }
     void update();
