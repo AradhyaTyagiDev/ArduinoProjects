@@ -26,7 +26,7 @@ constexpr float EMERGENCY_DISTANCE = 10.0f;
 // =========================================================
 // Motion Profiles (PWM)
 // =========================================================
-constexpr uint8_t PWM_FULL   = 255; // UNLEASHED! Dynamic braking handles it.
+constexpr uint8_t PWM_FULL   = 255; 
 constexpr uint8_t PWM_MEDIUM = 200; 
 constexpr uint8_t PWM_SLOW   = 140; 
 constexpr uint8_t PWM_CRAWL  = 90;  
@@ -50,6 +50,9 @@ constexpr uint16_t SENSOR_SETTLE_MS = 150;
 enum class RobotState {
     Initializing,
     MovingForward,
+    Flinching,           // NEW: Hard brake on hand swipe
+    AssessingFlinch,     // NEW: 300ms pause
+    Slipping,            // NEW: Tight 0.8f arc to dodge
     ObstacleDetected,
     Reversing,
     ScanningLeft,
@@ -110,7 +113,7 @@ private:
     // --- Anti-Wall-Hugging & Frustration Memory ---
     enum class TurnDir : int8_t { NONE = 0, LEFT = -1, RIGHT = 1 };
 
-    TurnDir mLastTurnDirection = TurnDir::RIGHT; // Default to right on startup
+    TurnDir mLastTurnDirection = TurnDir::RIGHT; 
     TurnDir mScanStartDirection = TurnDir::NONE; 
 
     float mFrustrationLevel = 0.0f; 
@@ -121,7 +124,7 @@ private:
     uint32_t mStraightDriveTime = 0;     
     bool mIsReactiveSteering = false;    
     float mRecenterCurvature = 0.0f;     
-    uint32_t mReactiveSteerStartTime = 0; // Tracks how long we swerve to calculate recenter time
+    uint32_t mReactiveSteerStartTime = 0; 
 
     // --- Helpers ---
     uint16_t getScanAngle();

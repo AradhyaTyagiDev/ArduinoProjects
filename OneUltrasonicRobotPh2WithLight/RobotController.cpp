@@ -73,27 +73,27 @@ void RobotController::update() {
       uint32_t currentTime = millis();
 
       // ---------------------------------------------------------
-      // 1. Physics Engine: Closing Rate
+      // 1. Physics Engine: Closing Rate (Low-pass filtered!)
       // ---------------------------------------------------------
       if (fabs(currentDistance - mPreviousDistance) > 0.5f) {
         float deltaTimeSec = (currentTime - mPreviousTime) / 1000.0f;
         if (deltaTimeSec > 0.020f) {
           float rawRate = (mPreviousDistance - currentDistance) / deltaTimeSec;
-          mClosingRate = (mClosingRate * 0.6f) + (rawRate * 0.4f);
+          mClosingRate = (mClosingRate * 0.6f) + (rawRate * 0.4f); // Filter smooths noise
         }
         mPreviousDistance = currentDistance;
         mPreviousTime = currentTime;
       }
 
       // ---------------------------------------------------------
-      // 2. Non-Linear Speed Curve (SPEED BOOST!)
+      // 2. Non-Linear Speed Curve
       // ---------------------------------------------------------
       float normalized = constrain((currentDistance - 30.0f) / 120.0f, 0.0f, 1.0f);
       float curve = normalized * normalized;
       uint8_t targetSpeedPWM = 80 + (curve * 175.0f); 
 
       // ---------------------------------------------------------
-      // 3. Dynamic Braking Zone (Adjusted for higher speeds)
+      // 3. Dynamic Braking Zone
       // ---------------------------------------------------------
       float stoppingDistance = 25.0f + (mCurrentSpeedPWM * 0.38f);
       if (mClosingRate > 30.0f) {
@@ -101,11 +101,19 @@ void RobotController::update() {
       }
 
       // ---------------------------------------------------------
-      // 4. Decision Time: Hard Brake, Smooth Bypass, or Cruise?
+      // 4. Decision Time: Flinch, Hard Brake, Smooth Bypass, or Cruise?
       // ---------------------------------------------------------
       
-      // A. HARD BRAKE: Too close, or approaching way too fast (Failed Swerve Fallback)
-      if (currentDistance <= stoppingDistance || currentDistance <= 20.0f || mClosingRate > 150.0f) {
+      // A. FLINCH REFLEX: Hand swiped (Trap B logic applied here)
+      if (mClosingRate > 150.0f && currentDistance > 20.0f) {
+        mMotor.activeBrake(); 
+        mCurrentSpeedPWM = 0; 
+        mClosingRate = 0.0f;
+        mIsReactiveSteering = false;
+        mState = RobotState::Flinching; // Trigger Flinch pipeline
+      }
+      // B. HARD BRAKE: Too close physically (Failed Swerve Fallback)
+      else if (currentDistance <= stoppingDistance || currentDistance <= 20.0f) {
         mMotor.activeBrake(); 
         mCurrentSpeedPWM = 0; 
         mClosingRate = 0.0f;
@@ -116,7 +124,7 @@ void RobotController::update() {
 
         mState = RobotState::ObstacleDetected;
       }
-      // B. SMOOTH BYPASS ZONE (<= 70cm). Curve smoothly WITHOUT stopping.
+      // C. SMOOTH BYPASS ZONE (<= 70cm). Slip around without stopping.
       else if (currentDistance <= 70.0f) {
         
         if (!mIsReactiveSteering) {
@@ -125,52 +133,49 @@ void RobotController::update() {
             mStraightDriveTime = 0; 
         }
 
-        // --- SPEED BOOST: Faster Ramping ---
         uint32_t rampElapsed = currentTime - mLastRampTime;
         if (rampElapsed >= 10) {
           int16_t speedDiff = targetSpeedPWM - mCurrentSpeedPWM;
-          if (speedDiff > 0) mCurrentSpeedPWM += 6;  
+          if (speedDiff > 0) mCurrentSpeedPWM += 6; 
           else if (speedDiff < 0) mCurrentSpeedPWM -= 10; 
           mCurrentSpeedPWM = constrain(mCurrentSpeedPWM, 0, targetSpeedPWM);
           mLastRampTime = currentTime; 
         }
 
-        float reactiveCurve = static_cast<float>(mLastTurnDirection) * 0.5f;
+        // FIX 1: Default to RIGHT (1.0f) if no memory exists yet to prevent 0.0f curvature!
+        float dirMultiplier = (mLastTurnDirection == TurnDir::LEFT) ? -1.0f : 1.0f;
+        float reactiveCurve = dirMultiplier * 0.5f;
+        
         mMotor.turn(reactiveCurve, mCurrentSpeedPWM);
       }
-      // C. CRUISE ZONE: Path is clear! (> 70cm). Go straight!
+      // D. CRUISE ZONE: Path is clear! (> 70cm).
       else {
-        // --- SPEED BOOST: Faster Ramping ---
         uint32_t rampElapsed = currentTime - mLastRampTime;
         if (rampElapsed >= 10) {
           int16_t speedDiff = targetSpeedPWM - mCurrentSpeedPWM;
-          if (speedDiff > 0) mCurrentSpeedPWM += 6;  
+          if (speedDiff > 0) mCurrentSpeedPWM += 6; 
           else if (speedDiff < 0) mCurrentSpeedPWM -= 10; 
           mCurrentSpeedPWM = constrain(mCurrentSpeedPWM, 0, targetSpeedPWM);
           mLastRampTime = currentTime; 
         }
 
         // ---------------------------------------------------------
-        // 5. LANE RECOVERY TRIGGER (The Snap-Back)
+        // 5. LANE RECOVERY TRIGGER (Trap A logic applied here)
         // ---------------------------------------------------------
         if (mIsReactiveSteering) {
-          uint32_t swerveDuration = currentTime - mReactiveSteerStartTime;
-          
           // FIX 2: Removed "&& swerveDuration > 1500". 
           // We must recenter the MOMENT the sensor clears the box (>90cm).
           if (currentDistance > 90.0f) { 
             mIsReactiveSteering = false;
             
-            // FIX 4: Changed 1.2f to 1.25f for exact angular cancellation (0.5 / 0.4 = 1.25)
-            uint32_t recenterDuration = (uint32_t)(swerveDuration * 1.25f); 
-            if (recenterDuration < 400) recenterDuration = 400;
-
-            mRecenterCurvature = -static_cast<float>(mLastTurnDirection) * 0.3f;
-            startAction(recenterDuration); 
+            // TRAP A FIX: Strictly time-limited (700ms) and gentle curvature (0.25f)
+            float dirMultiplier = (mLastTurnDirection == TurnDir::LEFT) ? -1.0f : 1.0f;
+            mRecenterCurvature = -dirMultiplier * 0.25f;
+            startAction(700); // Exactly 700ms limit as requested
             mState = RobotState::Recentering;
           } else {
-            // Keep swerving until the box is cleared
-            float reactiveCurve = static_cast<float>(mLastTurnDirection) * 0.5f;
+            float dirMultiplier = (mLastTurnDirection == TurnDir::LEFT) ? -1.0f : 1.0f;
+            float reactiveCurve = dirMultiplier * 0.5f;
             mMotor.turn(reactiveCurve, mCurrentSpeedPWM);
           }
         } else {
@@ -195,7 +200,8 @@ void RobotController::update() {
           }
 
           if (mFrustrationLevel > 1.0f) {
-            float peelBias = -static_cast<float>(mLastTurnDirection) * (mFrustrationLevel * 0.05f);
+            float dirMultiplier = (mLastTurnDirection == TurnDir::LEFT) ? -1.0f : 1.0f;
+            float peelBias = -dirMultiplier * (mFrustrationLevel * 0.05f);
             totalCurvature += peelBias;
           }
 
@@ -210,6 +216,42 @@ void RobotController::update() {
       }
       break;
     }
+
+    // =========================================================
+    // --- FLINCH REFLEX PIPELINE ---
+    // =========================================================
+    case RobotState::Flinching:
+      mMotor.activeBrake();
+      startAction(300); // 300ms pause to assess
+      mState = RobotState::AssessingFlinch;
+      break;
+
+    case RobotState::AssessingFlinch:
+      if (!isActionBusy()) {
+        // FIX 1 APPLIED HERE TOO: Default to RIGHT if no memory exists
+        float dirMultiplier = (mLastTurnDirection == TurnDir::LEFT) ? -1.0f : 1.0f;
+        float slipCurvature = dirMultiplier * 0.8f;
+        
+        mMotor.turn(slipCurvature, PWM_CRAWL);
+        startAction(800); // 800ms tight slip
+        mState = RobotState::Slipping;
+      }
+      break;
+
+    case RobotState::Slipping:
+      if (!isActionBusy()) {
+        // Successfully slipped past!
+        float dirMultiplier = (mLastTurnDirection == TurnDir::LEFT) ? -1.0f : 1.0f;
+        mRecenterCurvature = -dirMultiplier * 0.25f;
+        startAction(700);
+        mState = RobotState::Recentering;
+      } else if (getSafeDistance() <= 25.0f) {
+        // Still blocked after slipping! Decisive Retreat immediately.
+        mMotor.activeBrake();
+        mState = RobotState::StuckRecovery;
+        mRecoveryStep = RecoveryStep::Reversing;
+      }
+      break;
 
     // =========================================================
     // --- STANDARD OBSTACLE PIPELINE ---
@@ -317,18 +359,17 @@ void RobotController::update() {
       if (!isActionBusy()) { mState = RobotState::ObstacleDetected; }
       break;
 
-    // --- COMMIT MOVE PIPELINE (SPEED BOOST!) ---
+    // --- COMMIT MOVE PIPELINE ---
     case RobotState::CommitLeftMove: {
-      mMotor.turn(-0.5f, PWM_MEDIUM); 
+      mMotor.turn(-0.5f, PWM_MEDIUM); // Fast bypass arc
       float dist = getSafeDistance();
       uint32_t elapsed = millis() - mCommitStartTime;
       
       if (dist > CLEAR_DISTANCE_MIN || elapsed > 1500) {
         mSearchAttempt = 0;
-        uint32_t recenterTime = (uint32_t)(elapsed * 1.66f);
-        if (recenterTime < 300) recenterTime = 300;
-        mRecenterCurvature = 0.3f;
-        startAction(recenterTime);
+        // TRAP A FIX: Low speed, fixed 700ms, gentle 0.25f
+        mRecenterCurvature = 0.25f;
+        startAction(700);
         mState = RobotState::Recentering;
       } else if (dist <= 25.0f) {
         mMotor.activeBrake();
@@ -344,13 +385,9 @@ void RobotController::update() {
       
       if (dist > CLEAR_DISTANCE_MIN || elapsed > 1500) {
         mSearchAttempt = 0;
-        uint32_t recenterTime = (uint32_t)(elapsed * 1.66f);
-        if (recenterTime < 300) recenterTime = 300;
-        mRecenterCurvature = -0.3f;
-        
-        // FIX 1: ADDED MISSING startAction()! Without this, recentering is skipped entirely.
-        startAction(recenterTime); 
-        
+        // TRAP A FIX: Low speed, fixed 700ms, gentle 0.25f
+        mRecenterCurvature = -0.25f;
+        startAction(700);
         mState = RobotState::Recentering;
       } else if (dist <= 25.0f) {
         mMotor.activeBrake();
@@ -359,15 +396,14 @@ void RobotController::update() {
       break;
     }
 
-    // --- LANE RECOVERY (SPEED BOOST!) ---
+    // --- LANE RECOVERY (TRAP A ENFORCED) ---
     case RobotState::Recentering: {
-      mMotor.turn(mRecenterCurvature, PWM_MEDIUM); 
+      // TRAP A FIX: Use PWM_CRAWL strictly! 
+      mMotor.turn(mRecenterCurvature, PWM_CRAWL); 
       
       if (getSafeDistance() <= 60.0f) {
-        // FIX 3: Set to FALSE. We are abandoning the recenter because of a NEW obstacle.
-        // If we leave it as true, the robot will try to recenter again and spin in circles.
-        mIsReactiveSteering = false; 
-        mState = RobotState::MovingForward; 
+        mMotor.activeBrake();
+        mState = RobotState::ObstacleDetected;
       }
       else if (!isActionBusy()) {
         mState = RobotState::MovingForward; 
@@ -375,7 +411,7 @@ void RobotController::update() {
       break;
     }
 
-    // --- DECISIVE RETREAT (The Intelligent U-Turn) ---
+    // --- DECISIVE RETREAT ---
     case RobotState::StuckRecovery: {
       switch (mRecoveryStep) {
         case RecoveryStep::Reversing:
